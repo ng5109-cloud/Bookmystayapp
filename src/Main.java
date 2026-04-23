@@ -1,6 +1,6 @@
 import java.util.*;
 
-// ================= RESERVATION (NEW - UC5) =================
+// ================= RESERVATION =================
 class Reservation {
     private String guestName;
     private String roomType;
@@ -17,69 +17,132 @@ class Reservation {
     public String getRoomType() {
         return roomType;
     }
-
-    public void display() {
-        System.out.println("Guest: " + guestName + " | Requested Room: " + roomType);
-    }
 }
 
-// ================= BOOKING QUEUE (FIFO) =================
+// ================= BOOKING QUEUE =================
 class BookingRequestQueue {
+    private Queue<Reservation> queue = new LinkedList<>();
 
-    private Queue<Reservation> queue;
-
-    public BookingRequestQueue() {
-        queue = new LinkedList<>();
+    public void addRequest(Reservation r) {
+        queue.offer(r);
     }
 
-    // Add request to queue
-    public void addRequest(Reservation reservation) {
-        queue.offer(reservation);
-        System.out.println("Request added for " + reservation.getGuestName());
+    public Reservation getNextRequest() {
+        return queue.poll(); // FIFO removal
     }
 
-    // View all requests (without removing)
-    public void displayQueue() {
-        System.out.println("\n===== Booking Request Queue =====");
-
-        if (queue.isEmpty()) {
-            System.out.println("No booking requests.");
-            return;
-        }
-
-        for (Reservation r : queue) {
-            r.display();
-        }
-    }
-
-    // Peek next request (FIFO head)
-    public Reservation peekNext() {
-        return queue.peek();
+    public boolean isEmpty() {
+        return queue.isEmpty();
     }
 }
 
-// ================= MAIN CLASS =================
+// ================= INVENTORY =================
+class RoomInventory {
+    private HashMap<String, Integer> inventory = new HashMap<>();
+
+    public RoomInventory() {
+        inventory.put("Single Room", 2);
+        inventory.put("Double Room", 1);
+        inventory.put("Suite Room", 1);
+    }
+
+    public int getAvailability(String roomType) {
+        return inventory.getOrDefault(roomType, 0);
+    }
+
+    public void reduceAvailability(String roomType) {
+        inventory.put(roomType, inventory.get(roomType) - 1);
+    }
+
+    public void displayInventory() {
+        System.out.println("\nUpdated Inventory:");
+        for (String key : inventory.keySet()) {
+            System.out.println(key + " -> " + inventory.get(key));
+        }
+    }
+}
+
+// ================= BOOKING SERVICE =================
+class BookingService {
+
+    private RoomInventory inventory;
+
+    // Track all allocated room IDs (global uniqueness)
+    private Set<String> allocatedRoomIds = new HashSet<>();
+
+    // Map room type → assigned room IDs
+    private HashMap<String, Set<String>> roomAllocations = new HashMap<>();
+
+    public BookingService(RoomInventory inventory) {
+        this.inventory = inventory;
+    }
+
+    public void processRequests(BookingRequestQueue queue) {
+
+        while (!queue.isEmpty()) {
+
+            Reservation req = queue.getNextRequest();
+            String roomType = req.getRoomType();
+
+            System.out.println("\nProcessing request for " + req.getGuestName());
+
+            // Check availability
+            if (inventory.getAvailability(roomType) > 0) {
+
+                // Generate unique room ID
+                String roomId = generateRoomId(roomType);
+
+                // Ensure uniqueness (extra safety)
+                while (allocatedRoomIds.contains(roomId)) {
+                    roomId = generateRoomId(roomType);
+                }
+
+                // Add to global set
+                allocatedRoomIds.add(roomId);
+
+                // Add to type-wise allocation
+                roomAllocations.putIfAbsent(roomType, new HashSet<>());
+                roomAllocations.get(roomType).add(roomId);
+
+                // Update inventory immediately
+                inventory.reduceAvailability(roomType);
+
+                // Confirm booking
+                System.out.println("Booking CONFIRMED for " + req.getGuestName());
+                System.out.println("Room Type: " + roomType + ", Room ID: " + roomId);
+
+            } else {
+                System.out.println("Booking FAILED for " + req.getGuestName() + " (No availability)");
+            }
+        }
+    }
+
+    // Room ID generator
+    private String generateRoomId(String roomType) {
+        return roomType.substring(0, 2).toUpperCase() + "-" + (int)(Math.random() * 1000);
+    }
+}
+
+// ================= MAIN =================
 public class Main {
 
     public static void main(String[] args) {
 
-        // Initialize booking queue
-        BookingRequestQueue bookingQueue = new BookingRequestQueue();
+        // Initialize components
+        RoomInventory inventory = new RoomInventory();
+        BookingRequestQueue queue = new BookingRequestQueue();
 
-        // Simulate incoming booking requests
-        bookingQueue.addRequest(new Reservation("Alice", "Single Room"));
-        bookingQueue.addRequest(new Reservation("Bob", "Double Room"));
-        bookingQueue.addRequest(new Reservation("Charlie", "Suite Room"));
+        // Add booking requests (FIFO)
+        queue.addRequest(new Reservation("Alice", "Single Room"));
+        queue.addRequest(new Reservation("Bob", "Single Room"));
+        queue.addRequest(new Reservation("Charlie", "Single Room")); // should fail (only 2 available)
+        queue.addRequest(new Reservation("David", "Double Room"));
 
-        // Display queue (FIFO order)
-        bookingQueue.displayQueue();
+        // Process bookings
+        BookingService bookingService = new BookingService(inventory);
+        bookingService.processRequests(queue);
 
-        // Show next request to be processed
-        System.out.println("\nNext request to process:");
-        Reservation next = bookingQueue.peekNext();
-
-        if (next != null) {
-            next.display();
-        }
+        // Show updated inventory
+        inventory.displayInventory();
     }
 }
